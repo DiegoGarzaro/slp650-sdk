@@ -124,20 +124,34 @@ The parser (`slp650_sdk.protocol`) decodes both raster payload formats
 multi-kilobyte captures dump to a few lines. New findings go into
 `ARG_LENGTHS`/`COMMANDS` there, with the evidence logged below.
 
+## Raster row-to-dot mapping (cupsfilter stage)
+
+Capture-validated on AddressSmall (285 dots) and MediaBadge (567 dots):
+
+- Image row `y` lands on printhead dot `height - y` (the across axis is the
+  flipped image y axis).
+- **Image row 0 maps to dot `height`, which is out of range, and is silently
+  discarded.** Content must not rely on row 0 (the `border` pattern draws its
+  top edge at row 1 for this reason).
+- The bottom image row (`height - 1`) lands on dot 1 and bleeds onto dot 0
+  (double strike), on both integer- and fractional-height media.
+- Fractional dot heights are truncated (567.6 → 567); a canvas that does not
+  match the truncated raster gets rescaled and loses additional edge rows.
+
+This is behavior of the CUPS raster path, not of the printer: a pure encoder
+that builds raster lines directly is free of it.
+
 ## Open questions
 
 - Status (`0x01`) / Version (`0x02`) / Model (`0x12`) response formats on bulk
   IN endpoint `0x82`.
-- Exact edge mapping: the border capture shows the near-edge dot doubled
-  (`c0` = 2 dots) and the far-edge dot (image y = 0) missing — a one-dot
-  offset/clip introduced by the cupsfilter page geometry, not by the printer
-  protocol. Needs a dedicated ruler pattern to map image y → dot index
-  precisely.
 - Return-media geometry: the only capture used a mismatched (AddressSmall
   sized) input image, so its Margin/Indent values reflect scaled content, not
   the media. Re-capture with Return-sized patterns.
-- Whether fine mode (`Speed 0x02`) changes the byte stream beyond that one
-  argument, and what it changes physically.
+- Whether fine mode (`Speed 0x02`) changes anything physically beyond the one
+  argument byte. A normal-mode border measured ~62 mm against 63.5 mm
+  predicted at 300 lines/inch — possibly ruler imprecision, possibly a feed
+  pitch difference; needs the same border printed in both modes and measured.
 
 ## Discovery log
 
@@ -194,5 +208,22 @@ multi-kilobyte captures dump to a few lines. New findings go into
   568-tall canvas was rescaled to 749 x 567 by cupsfilter, dropping the
   closing border edge — canvases must match the truncated raster exactly
   (`media_pixels` fixed accordingly).
+
+### 2026-07-17 — edges diagnostic: row-to-dot mapping solved
+
+`pattern_edges_750x567` on MediaBadge probes rows 0/1/565/566 with distinct
+feed lengths (100%/75%/50%/25%). Capture segments:
+
+| Feed lines | Black dots | Rows present |
+|---|---|---|
+| 0-186 | 0, 1, 2, 566 | all four |
+| 187-374 | 2, 566 | 0, 1, 565 |
+| 375-561 | 566 | 0, 1 |
+| 562-749 | none | 0 only |
+
+Conclusion: row y → dot `567 - y`; row 1 → 566, row 565 → 2, row 566 → dot 1
+plus bleed onto dot 0; **row 0 → dot 567 (out of range) is discarded** — the
+cause of every "missing rail" seen so far, matching the AddressSmall border
+byte-for-byte (`04 01 c0`). Border pattern now draws its top edge at row 1.
 
 *(append new entries here: date, input, observation, conclusion)*

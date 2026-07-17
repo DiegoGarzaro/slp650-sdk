@@ -65,6 +65,17 @@ def test_checkerboard_has_both_colors() -> None:
     assert image.getpixel((8, 0)) == 0
 
 
+def test_border_avoids_dead_row_zero() -> None:
+    # Image row 0 maps to a printhead dot that does not exist; the border's
+    # top edge must sit at row 1 to actually print.
+    image = generate_pattern("border", WIDTH, HEIGHT)
+    assert image.getpixel((WIDTH // 2, 0)) == 255
+    assert image.getpixel((WIDTH // 2, 1)) == 0
+    assert image.getpixel((WIDTH // 2, HEIGHT - 1)) == 0
+    assert image.getpixel((0, HEIGHT // 2)) == 0
+    assert image.getpixel((WIDTH - 1, HEIGHT // 2)) == 0
+
+
 def test_edges_probes_four_distinct_rows() -> None:
     image = generate_pattern("edges", WIDTH, HEIGHT)
     # Row 0 full width, row 1 three quarters, row h-2 half, row h-1 quarter.

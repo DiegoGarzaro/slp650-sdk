@@ -17,8 +17,9 @@
 - [x] Document command argument encodings in docs/03_NATIVE_PROTOCOL.md
 - [x] Decode the raster (`0x04`) and RLE raster (`0x05`) payload formats
       (both implemented in `slp650_sdk.protocol`)
+- [x] Map the exact image-to-dot edge geometry (row y → dot height−y; row 0
+      is discarded by the CUPS raster path)
 - [ ] Understand status responses on bulk IN endpoint `0x82`
-- [ ] Map the exact image-to-dot edge geometry (one-dot offset seen in border capture)
 - [ ] Golden fixtures: `input.png -> expected.slp` pairs checked into tests
 
 ## Milestone 2 — Pure-Python encoder

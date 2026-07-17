@@ -58,9 +58,12 @@ def _vline(width: int, height: int) -> Image.Image:
 
 
 def _border(width: int, height: int) -> Image.Image:
+    # Top edge sits at row 1: cupsfilter maps image row y to printhead dot
+    # (height - y), so row 0 falls off the raster and would not print
+    # (capture-validated; see docs/03_NATIVE_PROTOCOL.md).
     image = _white(width, height)
     draw = ImageDraw.Draw(image)
-    draw.rectangle([(0, 0), (width - 1, height - 1)], outline=0, width=1)
+    draw.rectangle([(0, 1), (width - 1, height - 1)], outline=0, width=1)
     return image
 
 
