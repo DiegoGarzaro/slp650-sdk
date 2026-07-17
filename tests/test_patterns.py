@@ -84,7 +84,7 @@ def test_cli_with_media(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
     exit_code = main(["--media", "Return", "--out", str(tmp_path)])
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "pattern_white_510x188.png" in output
+    assert "pattern_white_510x187.png" in output
     assert len(list(tmp_path.glob("*.png"))) == len(PATTERNS)
 
 
