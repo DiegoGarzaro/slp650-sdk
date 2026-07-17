@@ -64,6 +64,26 @@ def _border(width: int, height: int) -> Image.Image:
     return image
 
 
+#: Rows probed by the ``edges`` pattern, as (row offset, line-length fraction).
+#: Negative offsets count from the bottom. Each probed row gets a distinct
+#: feed-length so a capture reveals which printhead dot each row maps to.
+EDGE_PROBES: tuple[tuple[int, float], ...] = (
+    (0, 1.0),
+    (1, 0.75),
+    (-2, 0.5),
+    (-1, 0.25),
+)
+
+
+def _edges(width: int, height: int) -> Image.Image:
+    image = _white(width, height)
+    draw = ImageDraw.Draw(image)
+    for offset, fraction in EDGE_PROBES:
+        y = offset if offset >= 0 else height + offset
+        draw.line([(0, y), (int(width * fraction) - 1, y)], fill=0, width=1)
+    return image
+
+
 def _checkerboard(width: int, height: int) -> Image.Image:
     image = _white(width, height)
     pixels = image.load()
@@ -82,6 +102,7 @@ PATTERNS: dict[str, Callable[[int, int], Image.Image]] = {
     "hline": _hline,
     "vline": _vline,
     "border": _border,
+    "edges": _edges,
     "checkerboard": _checkerboard,
 }
 

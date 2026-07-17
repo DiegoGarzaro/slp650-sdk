@@ -65,6 +65,20 @@ def test_checkerboard_has_both_colors() -> None:
     assert image.getpixel((8, 0)) == 0
 
 
+def test_edges_probes_four_distinct_rows() -> None:
+    image = generate_pattern("edges", WIDTH, HEIGHT)
+    # Row 0 full width, row 1 three quarters, row h-2 half, row h-1 quarter.
+    assert image.getpixel((WIDTH - 1, 0)) == 0
+    assert image.getpixel((int(WIDTH * 0.75) - 1, 1)) == 0
+    assert image.getpixel((int(WIDTH * 0.75), 1)) == 255
+    assert image.getpixel((WIDTH // 2 - 1, HEIGHT - 2)) == 0
+    assert image.getpixel((WIDTH // 2, HEIGHT - 2)) == 255
+    assert image.getpixel((WIDTH // 4 - 1, HEIGHT - 1)) == 0
+    assert image.getpixel((WIDTH // 4, HEIGHT - 1)) == 255
+    expected_black = WIDTH + int(WIDTH * 0.75) + WIDTH // 2 + WIDTH // 4
+    assert image.histogram()[0] == expected_black
+
+
 def test_unknown_pattern_raises() -> None:
     with pytest.raises(ValueError, match="Unknown pattern"):
         generate_pattern("bogus", WIDTH, HEIGHT)
