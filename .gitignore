@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Environments
+.venv/
+venv/
+
+# Tooling caches
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Captured printer-native streams and local test labels
+*.slp
+*.raster
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

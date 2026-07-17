@@ -1,0 +1,23 @@
+[Unit]
+Description=Seiko SLP650 Print Agent
+After=network-online.target cups.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# User is replaced by scripts/install_api.sh.
+User=slp650
+Group=lp
+WorkingDirectory=/opt/slp650-agent
+EnvironmentFile=-/etc/default/slp650-api
+ExecStart=/opt/slp650-agent/.venv/bin/uvicorn slp650_sdk.api:app --host 0.0.0.0 --port 8787
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/lock /tmp
+
+[Install]
+WantedBy=multi-user.target
