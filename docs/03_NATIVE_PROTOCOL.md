@@ -183,4 +183,16 @@ multi-kilobyte captures dump to a few lines. New findings go into
   middle lines are `04 01 c0`, near edge only). The one-dot edge offset is
   real and visible in print.
 
+### 2026-07-16 — MediaBadge (SLP-NWB) captures; model predictions confirmed
+
+- White label header predicted from the spec and confirmed byte-for-byte:
+  Margin 0 (`(576-567+7)/23.622` truncates to 0), Indent 4 (`(576-567)/2`).
+- Fine-print A/B diff diverges at offset 0x5 only: Speed `00` vs `02` —
+  confirms the Speed-as-fine-mode encoding and the `noFinePrint` fix.
+- Border first line is `05 09` + 9 x `7f` = 567 black dots: **CUPS truncates
+  fractional dot sizes** (136.224 pt = 567.6 → 567), it does not round. Our
+  568-tall canvas was rescaled to 749 x 567 by cupsfilter, dropping the
+  closing border edge — canvases must match the truncated raster exactly
+  (`media_pixels` fixed accordingly).
+
 *(append new entries here: date, input, observation, conclusion)*

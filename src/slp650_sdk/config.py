@@ -29,6 +29,11 @@ MEDIA_POINTS: dict[str, tuple[float, float]] = {
 def media_pixels(media: str, dpi: int = DPI) -> tuple[int, int]:
     """Convert a named media size to a pixel canvas.
 
+    Fractional dot sizes are truncated, matching the CUPS raster dimensions
+    (capture-validated: MediaBadge is 567 dots, not round(567.6) = 568). A
+    canvas that does not match the raster exactly gets rescaled by cupsfilter
+    and loses edge rows.
+
     Args:
         media (str): Media name, one of ``MEDIA_POINTS``.
         dpi (int): Target resolution in dots per inch.
@@ -45,7 +50,12 @@ def media_pixels(media: str, dpi: int = DPI) -> tuple[int, int]:
         raise ValueError(
             f"Unsupported media {media!r}; use one of {sorted(MEDIA_POINTS)}"
         ) from None
-    return round(width_points * dpi / 72), round(height_points * dpi / 72)
+    # The 1e-6 guards against float error on exact sizes (e.g. 98.64 pt
+    # evaluating to 410.99999... instead of 411).
+    return (
+        int(width_points * dpi / 72 + 1e-6),
+        int(height_points * dpi / 72 + 1e-6),
+    )
 
 
 @dataclass(frozen=True)

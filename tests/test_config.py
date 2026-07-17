@@ -23,8 +23,19 @@ def test_media_pixels_all_media_are_positive() -> None:
 
 
 def test_media_pixels_media_badge() -> None:
-    # SLP-NWB/NB/NR name badges; 136.224 pt = 567.6 -> 568 dots across.
-    assert media_pixels("MediaBadge") == (750, 568)
+    # SLP-NWB/NB/NR name badges. CUPS truncates 136.224 pt = 567.6 dots to
+    # 567 (capture-validated 2026-07-16), so the canvas must too.
+    assert media_pixels("MediaBadge") == (750, 567)
+
+
+def test_media_pixels_truncates_half_dots() -> None:
+    # Return is 45 pt = 187.5 dots: truncated, not rounded.
+    assert media_pixels("Return") == (510, 187)
+
+
+def test_media_pixels_exact_sizes_survive_float_error() -> None:
+    # 98.64 pt * 300 / 72 evaluates to 410.99999... in floats; must be 411.
+    assert media_pixels("AddressLarge") == (984, 411)
 
 
 def test_media_pixels_unknown_media_raises() -> None:
