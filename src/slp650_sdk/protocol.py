@@ -1,11 +1,9 @@
-"""Inspect and diff captured printer-native ``.slp`` streams.
+"""Parse, inspect, and diff printer-native ``.slp`` streams.
 
-This is the reverse-engineering companion to docs/03_NATIVE_PROTOCOL.md. The
-tokenizer knows the command bytes observed in the open-source driver; argument
-encodings are still being discovered, so tokenization is **heuristic**: a byte
-inside an undecoded payload that happens to match a command value is labeled
-as a command. Every time an argument length is confirmed on real captures, add
-it to ``ARG_LENGTHS`` and the dumps become more accurate.
+The protocol was decoded on 2026-07-16 from captured streams cross-checked
+against the GPL driver source (``SeikoSLPCommands.h``, ``RasterToSIISLP.cxx``,
+``SIISLPProcessBitmap.cxx``). Full specification and evidence:
+docs/03_NATIVE_PROTOCOL.md.
 
 Console script: ``slp650-dump FILE [FILE2]`` (one file: annotated dump; two
 files: diff).
@@ -15,19 +13,22 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-#: Command bytes observed in the open-source Seiko driver.
+#: Command bytes, from the driver's SeikoSLPCommands.h.
 COMMANDS: dict[int, str] = {
     0x00: "NOP",
     0x01: "Status",
     0x02: "Version",
+    0x03: "BaudRate",
     0x04: "PrintRaster",
     0x05: "PrintRLERaster",
     0x06: "Margin",
     0x07: "Repeat",
+    0x09: "Tab",
     0x0A: "LineFeed",
+    0x0B: "VertTab",
     0x0C: "FormFeed",
     0x0D: "Speed",
     0x0E: "Density",
@@ -35,29 +36,50 @@ COMMANDS: dict[int, str] = {
     0x12: "Model",
     0x16: "Indent",
     0x17: "FineMode",
+    0x1B: "SetSerialNumber",
+    0xA5: "Check",
 }
 
-#: Confirmed argument byte counts per command. Intentionally empty until each
-#: encoding is verified against real captures — record the evidence in
-#: docs/03_NATIVE_PROTOCOL.md before adding an entry here.
-ARG_LENGTHS: dict[int, int] = {}
+#: Confirmed 1-byte-argument commands (driver ``SendPrinterCommand(cmd, arg)``
+#: call sites plus capture evidence; see docs/03_NATIVE_PROTOCOL.md).
+ARG_LENGTHS: dict[int, int] = {
+    0x06: 1,  # Margin: value in mm (23.622 dots/mm at 300 dpi)
+    0x09: 1,  # Tab: leading white dots within the current line
+    0x0B: 1,  # VertTab: blank lines to advance
+    0x0D: 1,  # Speed: 0x02 = fine mode, 0x00 = normal (SLP650)
+    0x0E: 1,  # Density: signed; 0xF9 = 65%, 0x00 = 100%, 0x06 = 130%
+    0x16: 1,  # Indent: left margin in dots
+    0x17: 1,  # FineMode: used on older models instead of Speed
+}
+
+#: Commands followed by ``<length byte> <payload>``.
+LENGTH_PREFIXED: frozenset[int] = frozenset({0x04, 0x05})
 
 
 @dataclass(frozen=True)
 class Command:
-    """A recognized command byte, with arguments when their length is known.
+    """A parsed command.
 
     Attributes:
         offset (int): Byte offset in the stream.
         byte (int): Command byte value.
         name (str): Human-readable command name.
-        args (bytes): Argument bytes (empty while the length is unknown).
+        args (bytes): Argument bytes (for length-prefixed commands, the
+            payload without the length byte).
     """
 
     offset: int
     byte: int
     name: str
     args: bytes = b""
+
+    def key(self) -> tuple[int, bytes]:
+        """Identity of the command ignoring its stream offset.
+
+        Returns:
+            tuple[int, bytes]: Command byte and arguments.
+        """
+        return (self.byte, self.args)
 
 
 @dataclass(frozen=True)
@@ -72,9 +94,17 @@ class DataRun:
     offset: int
     data: bytes
 
+    def key(self) -> tuple[str, bytes]:
+        """Identity of the run ignoring its stream offset.
+
+        Returns:
+            tuple[str, bytes]: Marker and raw bytes.
+        """
+        return ("data", self.data)
+
 
 def tokenize(stream: bytes) -> list[Command | DataRun]:
-    """Split a native stream into recognized commands and data runs.
+    """Split a native stream into commands and unrecognized data runs.
 
     Args:
         stream (bytes): Captured printer-native byte stream.
@@ -96,16 +126,88 @@ def tokenize(stream: bytes) -> list[Command | DataRun]:
         byte = stream[position]
         if byte in COMMANDS:
             flush_data(position)
-            length = ARG_LENGTHS.get(byte, 0)
-            args = stream[position + 1 : position + 1 + length]
-            tokens.append(Command(position, byte, COMMANDS[byte], args))
-            position += 1 + length
+            if byte in LENGTH_PREFIXED and position + 1 < len(stream):
+                length = stream[position + 1]
+                args = stream[position + 2 : position + 2 + length]
+                tokens.append(Command(position, byte, COMMANDS[byte], args))
+                position += 2 + length
+            else:
+                length = ARG_LENGTHS.get(byte, 0)
+                args = stream[position + 1 : position + 1 + length]
+                tokens.append(Command(position, byte, COMMANDS[byte], args))
+                position += 1 + length
         else:
             if data_start is None:
                 data_start = position
             position += 1
     flush_data(len(stream))
     return tokens
+
+
+def decode_rle(payload: bytes) -> list[tuple[bool, int]]:
+    """Decode a PrintRLERaster (0x05) payload into dot runs.
+
+    Encoding (from the driver's ``CompressRun``):
+
+    - ``0x00``-``0x3F``: white run of N dots
+    - ``0x40``-``0x7F``: black run of N - 64 dots
+    - ``0x80``-``0xFF``: literal chunk; bits 6..0 are 7 dots, MSB first
+
+    Args:
+        payload (bytes): RLE bytes (without command and length bytes).
+
+    Returns:
+        list[tuple[bool, int]]: Runs as ``(is_black, dot_count)``, with
+            adjacent same-color runs merged; zero-length runs dropped.
+    """
+    runs: list[tuple[bool, int]] = []
+
+    def append(is_black: bool, count: int) -> None:
+        if count <= 0:
+            return
+        if runs and runs[-1][0] == is_black:
+            runs[-1] = (is_black, runs[-1][1] + count)
+        else:
+            runs.append((is_black, count))
+
+    for value in payload:
+        if value < 0x40:
+            append(False, value)
+        elif value < 0x80:
+            append(True, value - 0x40)
+        else:
+            for bit in range(6, -1, -1):
+                append(bool(value & (1 << bit)), 1)
+    return runs
+
+
+def decode_raster(payload: bytes) -> list[tuple[bool, int]]:
+    """Decode a PrintRaster (0x04) bitmap payload into dot runs.
+
+    Args:
+        payload (bytes): Raw bitmap bytes (without command and length bytes),
+            one dot per bit, MSB first.
+
+    Returns:
+        list[tuple[bool, int]]: Runs as ``(is_black, dot_count)``.
+    """
+    runs: list[tuple[bool, int]] = []
+    for value in payload:
+        for bit in range(7, -1, -1):
+            is_black = bool(value & (1 << bit))
+            if runs and runs[-1][0] == is_black:
+                runs[-1] = (is_black, runs[-1][1] + 1)
+            else:
+                runs.append((is_black, 1))
+    return runs
+
+
+def _format_runs(runs: list[tuple[bool, int]]) -> str:
+    total = sum(count for _, count in runs)
+    parts = ", ".join(
+        f"{'black' if is_black else 'white'} {count}" for is_black, count in runs
+    )
+    return f"{total} dots: {parts}" if runs else "0 dots"
 
 
 def _hex(data: bytes) -> str:
@@ -121,45 +223,93 @@ def _summarize_data(data: bytes, max_bytes: int) -> str:
     return f"{len(data)} bytes: {shown}{suffix}"
 
 
-def format_tokens(tokens: list[Command | DataRun], max_data_bytes: int = 16) -> str:
-    """Render tokens as an annotated, run-collapsed dump.
+def _format_token(token: Command | DataRun, max_data_bytes: int) -> str:
+    if isinstance(token, DataRun):
+        return f"data  {_summarize_data(token.data, max_data_bytes)}"
+    line = f"0x{token.byte:02x} {token.name}"
+    if token.byte == 0x05:
+        line += f"  {len(token.args)} bytes -> {_format_runs(decode_rle(token.args))}"
+    elif token.byte == 0x04:
+        line += f"  {len(token.args)} bytes -> {_format_runs(decode_raster(token.args))}"
+    elif token.args:
+        line += f"  args: {_hex(token.args)}"
+    return line
 
-    Consecutive identical argument-less commands (e.g. ``NOP`` padding) are
-    collapsed into a single line with a repeat count.
+
+@dataclass
+class _Block:
+    """A repeating group of tokens found by ``_collapse``."""
+
+    tokens: list[Command | DataRun]
+    repeat: int = 1
+    period: int = field(default=1)
+
+
+def _collapse(tokens: list[Command | DataRun], max_period: int = 4) -> list[_Block]:
+    """Group consecutive repeats of short token sequences.
+
+    Args:
+        tokens (list[Command | DataRun]): Tokens in stream order.
+        max_period (int): Longest repeating sequence to detect.
+
+    Returns:
+        list[_Block]: Blocks in stream order; ``repeat`` > 1 marks a
+            collapsed repetition of ``period`` tokens.
+    """
+    blocks: list[_Block] = []
+    index = 0
+    keys = [token.key() for token in tokens]
+    while index < len(tokens):
+        best_period = 0
+        best_repeat = 1
+        for period in range(1, max_period + 1):
+            repeat = 1
+            while (
+                index + (repeat + 1) * period <= len(tokens)
+                and keys[index + repeat * period : index + (repeat + 1) * period]
+                == keys[index : index + period]
+            ):
+                repeat += 1
+            if repeat > 1 and repeat * period > best_repeat * best_period:
+                best_period, best_repeat = period, repeat
+        if best_repeat > 1:
+            blocks.append(
+                _Block(tokens[index : index + best_period], best_repeat, best_period)
+            )
+            index += best_repeat * best_period
+        else:
+            blocks.append(_Block([tokens[index]]))
+            index += 1
+    return blocks
+
+
+def format_tokens(tokens: list[Command | DataRun], max_data_bytes: int = 16) -> str:
+    """Render tokens as an annotated dump with repeated sequences collapsed.
 
     Args:
         tokens (list[Command | DataRun]): Tokens from ``tokenize``.
         max_data_bytes (int): Hex bytes shown per data run before truncating.
 
     Returns:
-        str: Human-readable dump, one token (or collapsed run) per line.
+        str: Human-readable dump.
     """
     lines: list[str] = []
-    index = 0
-    while index < len(tokens):
-        token = tokens[index]
-        if isinstance(token, DataRun):
-            summary = _summarize_data(token.data, max_data_bytes)
-            lines.append(f"{token.offset:#08x}  data  {summary}")
-            index += 1
-            continue
-
-        repeat = 1
-        while (
-            not token.args
-            and index + repeat < len(tokens)
-            and isinstance(tokens[index + repeat], Command)
-            and tokens[index + repeat].byte == token.byte
-            and not tokens[index + repeat].args
-        ):
-            repeat += 1
-        line = f"{token.offset:#08x}  0x{token.byte:02x} {token.name}"
-        if token.args:
-            line += f"  args: {_hex(token.args)}"
-        if repeat > 1:
-            line += f"  x{repeat}"
-        lines.append(line)
-        index += repeat
+    for block in _collapse(tokens):
+        first = block.tokens[0]
+        if block.repeat == 1:
+            lines.append(f"{first.offset:#08x}  {_format_token(first, max_data_bytes)}")
+        elif block.period == 1:
+            lines.append(
+                f"{first.offset:#08x}  {_format_token(first, max_data_bytes)}"
+                f"  x{block.repeat}"
+            )
+        else:
+            lines.append(
+                f"{first.offset:#08x}  [{block.repeat} repeats of "
+                f"{block.period} commands]"
+            )
+            for token in block.tokens:
+                lines.append(f"            {_format_token(token, max_data_bytes)}")
     return "\n".join(lines)
 
 
@@ -245,14 +395,11 @@ def main(argv: list[str] | None = None) -> int:
         argv (list[str] | None): Arguments to parse; defaults to ``sys.argv``.
 
     Returns:
-        int: Process exit code.
+        int: Process exit code (diff mode: 2 when streams differ).
     """
     parser = argparse.ArgumentParser(
         prog="slp650-dump",
-        description=(
-            "Annotated dump of a captured .slp stream, or a diff of two. "
-            "Tokenization is heuristic until command argument lengths are confirmed."
-        ),
+        description="Annotated dump of a captured .slp stream, or a diff of two.",
     )
     parser.add_argument("file", type=Path, help="Captured .slp stream")
     parser.add_argument("file2", type=Path, nargs="?", help="Second stream to diff against")

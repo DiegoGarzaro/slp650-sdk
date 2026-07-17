@@ -12,10 +12,14 @@ DPI = 300
 #: Dots across the printhead. Every rendered label is at most this wide.
 PRINTHEAD_DOTS = 576
 
-#: Label media sizes in PostScript points (1/72 inch), taken from the PPD.
+#: Label media sizes in PostScript points (1/72 inch), from the PPD's
+#: fractional PaperDimension entries (dot-exact at 300 dpi, unlike the
+#: integer PageSize values). The PPD supports more sizes; add them here
+#: after validating the raster dimensions with a capture.
 MEDIA_POINTS: dict[str, tuple[float, float]] = {
     "AddressSmall": (236.16, 68.40),
     "AddressLarge": (236.16, 98.64),
+    "MediaBadge": (180.00, 136.224),  # name badges: SLP-NB, SLP-NR, SLP-NWB
     "MultiPurpose": (126.00, 68.40),
     "Return": (122.40, 45.00),
     "Shipping": (271.44, 136.224),
@@ -70,14 +74,18 @@ class SLPConfig:
     def filter_options(self) -> str:
         """CUPS option string passed to the Seiko raster filter.
 
+        The filter detects fine mode by searching the option string for the
+        literal ``noFinePrint`` (CUPS boolean-option style); a ``key=value``
+        form like ``FinePrint=False`` is ignored and leaves fine mode on.
+
         Returns:
-            str: Space-separated ``key=value`` options.
+            str: Space-separated CUPS options.
         """
-        fine = "True" if self.fine_print else "False"
+        fine = "FinePrint" if self.fine_print else "noFinePrint"
         return (
             f"PageSize={self.media} "
             f"Density={self.density} "
-            f"FinePrint={fine} "
+            f"{fine} "
             "Resolution=300dpi"
         )
 

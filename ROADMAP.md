@@ -13,10 +13,12 @@
 
 - [x] Test-pattern generator (`slp650-patterns`)
 - [x] Stream disassembler and diff tool (`slp650-dump`)
-- [ ] Build a corpus of captured `.slp` streams from controlled test images
-- [ ] Document command argument encodings in docs/03_NATIVE_PROTOCOL.md
-- [ ] Decode the raster (`0x04`) and RLE raster (`0x05`) payload formats
+- [x] Build a corpus of captured `.slp` streams from controlled test images
+- [x] Document command argument encodings in docs/03_NATIVE_PROTOCOL.md
+- [x] Decode the raster (`0x04`) and RLE raster (`0x05`) payload formats
+      (both implemented in `slp650_sdk.protocol`)
 - [ ] Understand status responses on bulk IN endpoint `0x82`
+- [ ] Map the exact image-to-dot edge geometry (one-dot offset seen in border capture)
 - [ ] Golden fixtures: `input.png -> expected.slp` pairs checked into tests
 
 ## Milestone 2 — Pure-Python encoder
