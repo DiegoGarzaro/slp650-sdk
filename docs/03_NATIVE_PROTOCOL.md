@@ -148,10 +148,9 @@ that builds raster lines directly is free of it.
 - Return-media geometry: the only capture used a mismatched (AddressSmall
   sized) input image, so its Margin/Indent values reflect scaled content, not
   the media. Re-capture with Return-sized patterns.
-- Whether fine mode (`Speed 0x02`) changes anything physically beyond the one
-  argument byte. A normal-mode border measured ~62 mm against 63.5 mm
-  predicted at 300 lines/inch — possibly ruler imprecision, possibly a feed
-  pitch difference; needs the same border printed in both modes and measured.
+- What fine mode (`Speed 0x02`) changes thermally/mechanically — it has no
+  measurable effect on geometry (see the feed-pitch entry in the discovery
+  log); presumably print speed and/or heat, affecting darkness.
 
 ## Discovery log
 
@@ -235,5 +234,20 @@ byte-for-byte (`04 01 c0`). Border pattern now draws its top edge at row 1.
   (`Speed 0x00`). Pending: print the same border with `--fine-print`
   (`Speed 0x02`) and measure; that decides between a mode-dependent feed
   pitch and a general mechanical shortfall.
+
+### 2026-07-18 — feed pitch: ~2% short in both modes
+
+Same border (750 lines) printed in normal (`Speed 0x00`) and fine
+(`Speed 0x02`) mode: 62.0 and 62.3 mm — equal within ruler precision, both
+short of the 63.5 mm that 300 lines/inch predicts. Across-the-head stayed
+exactly 48.0 mm in both.
+
+Conclusions:
+
+- The printhead axis is dot-exact (300 dpi); the **feed axis advances ~2%
+  less than nominal** (effective ≈ 306 lines/inch, ≈ 83 µm/line) regardless
+  of mode. Squares encode slightly rectangular; for dimension-critical labels
+  (barcodes, rulers) a future encoder can pre-stretch the feed axis by ~1.02.
+- Fine mode does not change geometry; its effect is speed/thermal only.
 
 *(append new entries here: date, input, observation, conclusion)*
