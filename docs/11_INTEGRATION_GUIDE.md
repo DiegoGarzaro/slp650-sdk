@@ -106,7 +106,7 @@ from PIL import Image, ImageDraw
 from slp650_sdk.codes import qr_image
 from slp650_sdk.templates import Template, draw_fitted_text, register_template
 
-def render_asset_tag(fields, canvas):
+def render_cable_tag(fields, canvas):
     width, height = canvas
     image = Image.new("L", canvas, 255)
     draw = ImageDraw.Draw(image)
@@ -114,12 +114,12 @@ def render_asset_tag(fields, canvas):
 
     qr_size = height - 2 * margin
     image.paste(
-        qr_image(fields["asset_url"], qr_size).convert("L"),
+        qr_image(fields["manual_url"], qr_size).convert("L"),
         (width - margin - qr_size, margin),
     )
     draw_fitted_text(
         draw,
-        fields["asset_id"],
+        fields["cable_id"],
         (margin, margin, width - 2 * margin - qr_size, height - margin),
         max_font_size=height // 3,
         bold=True,
@@ -128,12 +128,12 @@ def render_asset_tag(fields, canvas):
     return image.convert("1", dither=Image.Dither.NONE)
 
 register_template(Template(
-    name="asset-tag",
-    description="Asset ID with QR link",
+    name="cable-tag",
+    description="Cable ID with QR link to its manual",
     default_media="MultiPurpose",
-    required_fields=("asset_id", "asset_url"),
+    required_fields=("cable_id", "manual_url"),
     optional_fields=(),
-    renderer=render_asset_tag,
+    renderer=render_cable_tag,
 ))
 ```
 
@@ -157,9 +157,9 @@ imported by the API process (e.g. from a small wrapper module that imports
   field values vary in length, and clipped labels are worse than smaller
   text.
 - **Mind physical accuracy**: the feed axis prints ~2% short mechanically
-  (docs/03, discovery log). For scannable barcodes, prefer placing bars
-  *across* the feed (as the built-in shipping template does) and always
-  verify a printed label with a real scanner.
+  (docs/03, discovery log). The shrink is uniform, so Code 128's relative bar
+  widths survive it — but always verify a printed barcode/QR with a real
+  scanner before relying on it.
 - **Test without hardware**: assert the rendered image size/mode in unit
   tests, and inspect encoded output with
   `slp650 label.png --native --dry-run --capture out.slp` + `slp650-dump out.slp`.

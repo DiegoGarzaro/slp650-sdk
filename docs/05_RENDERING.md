@@ -29,9 +29,13 @@ Built-in templates:
 | Name | Media | Required | Optional |
 |---|---|---|---|
 | `address` | AddressSmall | `address` | — |
-| `visitor-badge` | MediaBadge | `name` | `company`, `qr_data` |
+| `asset-tag` | MultiPurpose | `asset_id` | `owner`, `qr_data` |
+| `inventory` | MultiPurpose | `item` | `sku`, `quantity`, `location` |
+| `photo` | MediaBadge | `image_base64` | `caption` |
 | `shipping` | Shipping | `to` | `from`, `barcode_data` |
+| `visitor-badge` | MediaBadge | `name` | `company`, `qr_data` |
 
 QR codes (`slp650_sdk.codes.qr_image`) and Code 128 barcodes
 (`code128_image`) are rendered host-side as 1-bit images, per the rules
-above. Planned additions: Inventory, Asset tag, Photo layouts.
+above. The `photo` template takes a base64-encoded image (optionally as a
+`data:` URI) and dithers it with Floyd–Steinberg.

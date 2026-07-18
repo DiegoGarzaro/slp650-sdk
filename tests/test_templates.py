@@ -21,7 +21,14 @@ from slp650_sdk.templates import (
 
 def test_builtin_templates_are_registered() -> None:
     names = [template.name for template in list_templates()]
-    assert names == ["address", "shipping", "visitor-badge"]
+    assert names == [
+        "address",
+        "asset-tag",
+        "inventory",
+        "photo",
+        "shipping",
+        "visitor-badge",
+    ]
 
 
 def test_get_unknown_template_raises_lookup_error() -> None:
@@ -42,6 +49,16 @@ def test_get_unknown_template_raises_lookup_error() -> None:
         (
             "shipping",
             {"to": "Diego", "from": "ACME Warehouse", "barcode_data": "PKG-0042"},
+        ),
+        ("asset-tag", {"asset_id": "IT-0042"}),
+        (
+            "asset-tag",
+            {"asset_id": "IT-0042", "owner": "Diego", "qr_data": "https://example.com/a/42"},
+        ),
+        ("inventory", {"item": "M3 screws"}),
+        (
+            "inventory",
+            {"item": "M3 screws", "sku": "SCR-M3-12", "quantity": "500", "location": "A3"},
         ),
     ],
 )
@@ -104,6 +121,42 @@ def test_register_duplicate_requires_replace(custom_template: Template) -> None:
     with pytest.raises(ValueError, match="already registered"):
         register_template(custom_template)
     register_template(custom_template, replace=True)  # no error
+
+
+def _photo_payload() -> str:
+    import base64
+    import io
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (120, 80), (128, 128, 128)).save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
+def test_photo_template_renders_dithered_image() -> None:
+    image = render_template("photo", {"image_base64": _photo_payload()})
+    assert image.mode == "1"
+    assert image.size == media_pixels("MediaBadge")
+    # Mid-gray dithers into a mix of black and white.
+    assert image.getextrema() == (0, 255)
+
+
+def test_photo_template_accepts_data_uri_and_caption() -> None:
+    payload = f"data:image/png;base64,{_photo_payload()}"
+    image = render_template("photo", {"image_base64": payload, "caption": "Team lunch"})
+    assert image.size == media_pixels("MediaBadge")
+
+
+def test_photo_template_rejects_bad_base64() -> None:
+    with pytest.raises(ValueError, match="base64"):
+        render_template("photo", {"image_base64": "not-base64!!"})
+
+
+def test_photo_template_rejects_non_image_payload() -> None:
+    import base64
+
+    payload = base64.b64encode(b"plain text, not an image").decode()
+    with pytest.raises(ValueError, match="base64-encoded image"):
+        render_template("photo", {"image_base64": payload})
 
 
 def test_qr_image_size_and_content() -> None:

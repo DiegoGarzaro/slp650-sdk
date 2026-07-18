@@ -9,14 +9,17 @@ the caller feeds to ``slp650_sdk.native_encoder.encode_image``.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import io
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, UnidentifiedImageError
 
 from slp650_sdk.codes import code128_image, qr_image
 from slp650_sdk.config import media_pixels
-from slp650_sdk.rendering import load_font, wrap_text
+from slp650_sdk.rendering import fit_image_to_canvas, load_font, wrap_text
 
 #: A renderer takes (fields, (width, height)) and returns a 1-bit image.
 TemplateRenderer = Callable[[Mapping[str, str], tuple[int, int]], Image.Image]
@@ -285,6 +288,122 @@ def _render_shipping(fields: Mapping[str, str], canvas: tuple[int, int]) -> Imag
     return _finish(image)
 
 
+def _render_asset_tag(fields: Mapping[str, str], canvas: tuple[int, int]) -> Image.Image:
+    width, height = canvas
+    image, draw = _blank_canvas(canvas)
+    margin = max(16, height // 12)
+    text_right = width - margin
+
+    qr_data = str(fields.get("qr_data", "")).strip()
+    if qr_data:
+        qr_size = height - 2 * margin
+        qr = qr_image(qr_data, qr_size)
+        image.paste(qr.convert("L"), (width - margin - qr_size, margin))
+        text_right = width - 2 * margin - qr_size
+
+    owner = str(fields.get("owner", "")).strip()
+    id_bottom = height - margin if not owner else margin + int((height - 2 * margin) * 0.65)
+    draw_fitted_text(
+        draw,
+        str(fields["asset_id"]),
+        (margin, margin, text_right, id_bottom),
+        max_font_size=height // 3,
+        bold=True,
+        align="left",
+        valign="middle",
+    )
+    if owner:
+        draw_fitted_text(
+            draw,
+            owner,
+            (margin, id_bottom + margin // 2, text_right, height - margin),
+            max_font_size=height // 7,
+            min_font_size=12,
+            align="left",
+            valign="top",
+        )
+    return _finish(image)
+
+
+def _render_inventory(fields: Mapping[str, str], canvas: tuple[int, int]) -> Image.Image:
+    width, height = canvas
+    image, draw = _blank_canvas(canvas)
+    margin = max(16, height // 12)
+    content_bottom = height - margin
+
+    sku = str(fields.get("sku", "")).strip()
+    if sku:
+        bar_height = height // 3
+        bar = code128_image(sku, width=width - 2 * margin, height=bar_height)
+        image.paste(bar.convert("L"), (margin, height - margin - bar_height))
+        content_bottom = height - 2 * margin - bar_height
+
+    details = " · ".join(
+        part
+        for part in (
+            f"Qty {fields['quantity'].strip()}" if str(fields.get("quantity", "")).strip() else "",
+            str(fields.get("location", "")).strip(),
+        )
+        if part
+    )
+    item_bottom = content_bottom if not details else margin + int((content_bottom - margin) * 0.6)
+    draw_fitted_text(
+        draw,
+        str(fields["item"]),
+        (margin, margin, width - margin, item_bottom),
+        max_font_size=height // 4,
+        bold=True,
+        align="left",
+        valign="middle",
+    )
+    if details:
+        draw_fitted_text(
+            draw,
+            details,
+            (margin, item_bottom + margin // 2, width - margin, content_bottom),
+            max_font_size=height // 8,
+            min_font_size=12,
+            align="left",
+            valign="top",
+        )
+    return _finish(image)
+
+
+def _render_photo(fields: Mapping[str, str], canvas: tuple[int, int]) -> Image.Image:
+    width, height = canvas
+    payload = str(fields["image_base64"]).strip()
+    if payload.startswith("data:") and "," in payload:
+        payload = payload.split(",", 1)[1]
+    try:
+        raw = base64.b64decode(payload, validate=True)
+        with Image.open(io.BytesIO(raw)) as source:
+            source.load()
+            photo_source = source.copy()
+    except (binascii.Error, ValueError, UnidentifiedImageError) as exc:
+        raise ValueError("image_base64 is not a valid base64-encoded image") from exc
+
+    caption = str(fields.get("caption", "")).strip()
+    caption_height = height // 6 if caption else 0
+    photo = fit_image_to_canvas(photo_source, (width, height - caption_height))
+
+    image, draw = _blank_canvas(canvas)
+    image.paste(photo.convert("L"), (0, 0))
+    if caption:
+        margin = max(8, height // 24)
+        draw_fitted_text(
+            draw,
+            caption,
+            (margin, height - caption_height, width - margin, height - margin // 2),
+            max_font_size=caption_height - margin,
+            min_font_size=12,
+            align="center",
+            valign="middle",
+        )
+    # Keep the photo's Floyd-Steinberg dithering: content is already 1-bit
+    # values, so the no-dither conversion is lossless here.
+    return _finish(image)
+
+
 register_template(
     Template(
         name="address",
@@ -313,5 +432,35 @@ register_template(
         required_fields=("to",),
         optional_fields=("from", "barcode_data"),
         renderer=_render_shipping,
+    )
+)
+register_template(
+    Template(
+        name="asset-tag",
+        description="Asset ID with optional owner line and QR code",
+        default_media="MultiPurpose",
+        required_fields=("asset_id",),
+        optional_fields=("owner", "qr_data"),
+        renderer=_render_asset_tag,
+    )
+)
+register_template(
+    Template(
+        name="inventory",
+        description="Item name with optional quantity/location and Code 128 SKU barcode",
+        default_media="MultiPurpose",
+        required_fields=("item",),
+        optional_fields=("sku", "quantity", "location"),
+        renderer=_render_inventory,
+    )
+)
+register_template(
+    Template(
+        name="photo",
+        description="Dithered photo (base64-encoded image) with optional caption",
+        default_media="MediaBadge",
+        required_fields=("image_base64",),
+        optional_fields=("caption",),
+        renderer=_render_photo,
     )
 )

@@ -154,10 +154,6 @@ def render_text_label(
 def fit_image_to_media(image: Image.Image, media: str) -> Image.Image:
     """Fit an arbitrary image onto a media canvas as a 1-bit label.
 
-    Mirrors what the CUPS raster path used to do for uploads: scale to fit
-    (preserving aspect ratio), center on a white canvas, and dither to 1-bit.
-    Transparency is flattened against white.
-
     Args:
         image (Image.Image): Source image, any mode or size.
         media (str): Label media name (see ``config.MEDIA_POINTS``).
@@ -168,7 +164,23 @@ def fit_image_to_media(image: Image.Image, media: str) -> Image.Image:
     Raises:
         ValueError: If ``media`` is not a known media name.
     """
-    canvas = media_pixels(media)
+    return fit_image_to_canvas(image, media_pixels(media))
+
+
+def fit_image_to_canvas(image: Image.Image, canvas: tuple[int, int]) -> Image.Image:
+    """Fit an arbitrary image into a pixel canvas as a 1-bit bitmap.
+
+    Mirrors what the CUPS raster path used to do for uploads: scale to fit
+    (preserving aspect ratio), center on a white canvas, and dither to 1-bit.
+    Transparency is flattened against white.
+
+    Args:
+        image (Image.Image): Source image, any mode or size.
+        canvas (tuple[int, int]): Target size as ``(width, height)``.
+
+    Returns:
+        Image.Image: 1-bit image exactly ``canvas`` sized.
+    """
     if image.mode in ("RGBA", "LA", "PA") or "transparency" in image.info:
         background = Image.new("RGBA", image.size, (255, 255, 255, 255))
         background.alpha_composite(image.convert("RGBA"))
