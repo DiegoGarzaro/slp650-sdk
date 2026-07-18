@@ -3,6 +3,10 @@
 A FastAPI print agent (`slp650_sdk.api`) intended to run on the host that has
 the printer attached. Default port: **8787**.
 
+Text and image printing use the built-in pure-Python encoder — no CUPS
+required. The CUPS toolchain is needed only for PDF uploads, which fall back
+to it automatically (responses carry an `engine` field: `native` or `cups`).
+
 ## Authentication
 
 Every endpoint requires the `X-API-Key` header, checked against the
@@ -20,7 +24,8 @@ BASE=http://127.0.0.1:8787
 
 ### `GET /health`
 
-Reports whether the encoder toolchain and the printer device are present.
+Reports printer availability; `ok` is true when the device is present.
+`pdf_support` indicates whether the optional CUPS toolchain is installed.
 
 ```bash
 curl -H "X-API-Key: $API_KEY" $BASE/health
@@ -47,7 +52,9 @@ Body fields: `text` (required), `media`, `density`, `fine_print`, `copies`
 
 ### `POST /print/image`
 
-Prints an uploaded image or PDF (max 20 MiB).
+Prints an uploaded image or PDF (max 20 MiB). Images are fitted onto the
+media canvas (aspect-preserving, centered, dithered to 1-bit) and encoded
+natively; PDFs go through the CUPS pipeline.
 
 ```bash
 curl -X POST $BASE/print/image \

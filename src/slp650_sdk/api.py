@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import io
 import os
 import shutil
 import tempfile
@@ -21,11 +22,13 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
-from slp650_sdk.config import SLPConfig
+from slp650_sdk.config import SLPConfig, media_pixels
 from slp650_sdk.errors import SLPError
-from slp650_sdk.rendering import render_text_label
+from slp650_sdk.native_encoder import encode_image
+from slp650_sdk.rendering import fit_image_to_media, render_text_image
 from slp650_sdk.transport import print_file, send_native_stream
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -68,7 +71,9 @@ class TextLabel(BaseModel):
 
 
 async def execute_print(path: Path, config: SLPConfig, copies: int) -> int:
-    """Encode and print a file without blocking the event loop.
+    """Encode via the CUPS pipeline and print, without blocking the loop.
+
+    Used only for inputs the native encoder cannot read (e.g. PDFs).
 
     Args:
         path (Path): Input document to print.
@@ -91,6 +96,43 @@ async def execute_print(path: Path, config: SLPConfig, copies: int) -> int:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+async def execute_native_print(
+    image: Image.Image, config: SLPConfig, copies: int
+) -> int:
+    """Encode a label image with the native encoder and print it.
+
+    Args:
+        image (Image.Image): 1-bit label image in reading orientation.
+        config (SLPConfig): Printer configuration (density/fine mode used by
+            the encoder, device used by the transport).
+        copies (int): Number of copies.
+
+    Returns:
+        int: Native stream size in bytes, per copy.
+
+    Raises:
+        HTTPException: 422 for encoding parameter errors, 503 if the printer
+            is unavailable.
+    """
+    def run() -> int:
+        data = encode_image(
+            image,
+            density=config.density,
+            fine_print=config.fine_print,
+            cups_compat=False,
+        )
+        with PRINT_LOCK:
+            send_native_stream(data, config, copies=copies)
+        return len(data)
+
+    try:
+        return await asyncio.to_thread(run)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SLPError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 def _read_upload(payload: bytes, what: str) -> None:
     """Validate an uploaded payload.
 
@@ -109,17 +151,22 @@ def _read_upload(payload: bytes, what: str) -> None:
 
 @app.get("/health")
 def health(_: None = Depends(verify_api_key)) -> dict[str, object]:
-    """Report whether the encoder toolchain and printer device are present."""
+    """Report printer availability and optional CUPS (PDF) support.
+
+    Text and image printing use the built-in native encoder and only need
+    the device; the CUPS toolchain is required solely for PDF uploads.
+    """
     config = SLPConfig.from_env()
+    pdf_support = (
+        config.ppd_path.is_file()
+        and config.filter_path.is_file()
+        and shutil.which("cupsfilter") is not None
+    )
     return {
-        "ok": (
-            config.ppd_path.is_file()
-            and config.filter_path.is_file()
-            and config.device_path.exists()
-            and shutil.which("cupsfilter") is not None
-        ),
+        "ok": config.device_path.exists(),
         "device": str(config.device_path),
         "device_present": config.device_path.exists(),
+        "pdf_support": pdf_support,
         "ppd_present": config.ppd_path.is_file(),
         "filter_present": config.filter_path.is_file(),
         "cupsfilter_present": shutil.which("cupsfilter") is not None,
@@ -128,23 +175,28 @@ def health(_: None = Depends(verify_api_key)) -> dict[str, object]:
 
 @app.post("/print/text")
 async def print_text(request: TextLabel, _: None = Depends(verify_api_key)) -> dict[str, object]:
-    """Render a text label host-side and print it."""
+    """Render a text label and print it via the native encoder."""
     config = SLPConfig.from_env(request.media, request.density, request.fine_print)
-    with tempfile.TemporaryDirectory(prefix="slp650-api-") as temp_dir:
-        label = Path(temp_dir) / "label.png"
-        try:
-            render_text_label(
-                request.text,
-                request.media,
-                label,
-                font_size=request.font_size,
-                margin=request.margin,
-                rotate=request.rotate,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        count = await execute_print(label, config, request.copies)
-    return {"status": "printed", "native_bytes_per_copy": count, "copies": request.copies}
+    try:
+        image = render_text_image(
+            request.text,
+            request.media,
+            font_size=request.font_size,
+            margin=request.margin,
+            rotate=request.rotate,
+        )
+        if image.size != media_pixels(request.media):
+            # 90/270 rotation swaps dimensions; refit onto the media canvas.
+            image = fit_image_to_media(image, request.media)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    count = await execute_native_print(image, config, request.copies)
+    return {
+        "status": "printed",
+        "engine": "native",
+        "native_bytes_per_copy": count,
+        "copies": request.copies,
+    }
 
 
 @app.post("/print/image")
@@ -156,17 +208,39 @@ async def print_image(
     copies: int = Form(1, ge=1, le=100),
     _: None = Depends(verify_api_key),
 ) -> dict[str, object]:
-    """Print an uploaded image or PDF."""
-    suffix = Path(file.filename or "label.bin").suffix or ".bin"
+    """Print an uploaded image (native encoder) or PDF (CUPS fallback)."""
     payload = await file.read()
     _read_upload(payload, "file")
-
     config = SLPConfig.from_env(media, density, fine_print)
-    with tempfile.TemporaryDirectory(prefix="slp650-api-") as temp_dir:
-        source = Path(temp_dir) / f"upload{suffix}"
-        source.write_bytes(payload)
-        count = await execute_print(source, config, copies)
-    return {"status": "printed", "native_bytes_per_copy": count, "copies": copies}
+
+    try:
+        with Image.open(io.BytesIO(payload)) as source_image:
+            source_image.load()
+            try:
+                image = fit_image_to_media(source_image, media)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except UnidentifiedImageError:
+        # Not an image PIL can read (e.g. PDF): fall back to the CUPS path.
+        suffix = Path(file.filename or "label.bin").suffix or ".bin"
+        with tempfile.TemporaryDirectory(prefix="slp650-api-") as temp_dir:
+            source = Path(temp_dir) / f"upload{suffix}"
+            source.write_bytes(payload)
+            count = await execute_print(source, config, copies)
+        return {
+            "status": "printed",
+            "engine": "cups",
+            "native_bytes_per_copy": count,
+            "copies": copies,
+        }
+
+    count = await execute_native_print(image, config, copies)
+    return {
+        "status": "printed",
+        "engine": "native",
+        "native_bytes_per_copy": count,
+        "copies": copies,
+    }
 
 
 @app.post("/print/raw")

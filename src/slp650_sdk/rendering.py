@@ -70,24 +70,26 @@ def wrap_text(
     return "\n".join(output)
 
 
-def render_text_label(
+def render_text_image(
     text: str,
     media: str,
-    destination: Path,
     *,
     font_size: int = 42,
     margin: int = 24,
     rotate: int = 0,
-) -> None:
-    """Render centered, word-wrapped text to a 1-bit PNG label.
+) -> Image.Image:
+    """Render centered, word-wrapped text to a 1-bit label image.
 
     Args:
         text (str): Text to render; newlines are preserved.
         media (str): Label media name (see ``config.MEDIA_POINTS``).
-        destination (Path): Output PNG path.
         font_size (int): Font size in pixels.
         margin (int): Margin around the text in pixels.
-        rotate (int): Rotation in degrees: 0, 90, 180, or 270.
+        rotate (int): Rotation in degrees: 0, 90, 180, or 270. Note that 90
+            and 270 swap the canvas dimensions.
+
+    Returns:
+        Image.Image: 1-bit label image.
 
     Raises:
         ValueError: If ``media`` or ``rotate`` is invalid.
@@ -109,5 +111,67 @@ def render_text_label(
 
     if rotate:
         image = image.rotate(rotate, expand=True, fillcolor=255)
-    image = ImageOps.autocontrast(image).convert("1", dither=Image.Dither.FLOYDSTEINBERG)
-    image.save(destination, format="PNG")
+    return ImageOps.autocontrast(image).convert("1", dither=Image.Dither.FLOYDSTEINBERG)
+
+
+def render_text_label(
+    text: str,
+    media: str,
+    destination: Path,
+    *,
+    font_size: int = 42,
+    margin: int = 24,
+    rotate: int = 0,
+) -> None:
+    """Render centered, word-wrapped text to a 1-bit PNG label file.
+
+    Args:
+        text (str): Text to render; newlines are preserved.
+        media (str): Label media name (see ``config.MEDIA_POINTS``).
+        destination (Path): Output PNG path.
+        font_size (int): Font size in pixels.
+        margin (int): Margin around the text in pixels.
+        rotate (int): Rotation in degrees: 0, 90, 180, or 270.
+
+    Raises:
+        ValueError: If ``media`` or ``rotate`` is invalid.
+    """
+    render_text_image(
+        text, media, font_size=font_size, margin=margin, rotate=rotate
+    ).save(destination, format="PNG")
+
+
+def fit_image_to_media(image: Image.Image, media: str) -> Image.Image:
+    """Fit an arbitrary image onto a media canvas as a 1-bit label.
+
+    Mirrors what the CUPS raster path used to do for uploads: scale to fit
+    (preserving aspect ratio), center on a white canvas, and dither to 1-bit.
+    Transparency is flattened against white.
+
+    Args:
+        image (Image.Image): Source image, any mode or size.
+        media (str): Label media name (see ``config.MEDIA_POINTS``).
+
+    Returns:
+        Image.Image: 1-bit image exactly the size of the media canvas.
+
+    Raises:
+        ValueError: If ``media`` is not a known media name.
+    """
+    canvas = media_pixels(media)
+    if image.mode in ("RGBA", "LA", "PA") or "transparency" in image.info:
+        background = Image.new("RGBA", image.size, (255, 255, 255, 255))
+        background.alpha_composite(image.convert("RGBA"))
+        image = background
+    if image.mode != "L":
+        image = image.convert("L")
+    image = ImageOps.autocontrast(image)
+    if image.size != canvas:
+        fitted = ImageOps.contain(image, canvas)
+        background_l = Image.new("L", canvas, 255)
+        background_l.paste(
+            fitted,
+            ((canvas[0] - fitted.width) // 2, (canvas[1] - fitted.height) // 2),
+        )
+        image = background_l
+    return image.convert("1", dither=Image.Dither.FLOYDSTEINBERG)

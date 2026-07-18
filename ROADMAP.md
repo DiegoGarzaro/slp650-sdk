@@ -29,7 +29,8 @@
 - [x] Byte-for-byte parity with golden fixtures (all AddressSmall patterns,
       density variants, and MediaBadge captures)
 - [x] Encoder works on any OS (macOS/Windows included)
-- [ ] Use the native encoder in the REST API text/image endpoints
+- [x] Use the native encoder in the REST API text/image endpoints (CUPS
+      remains as the PDF fallback)
 
 ## Milestone 3 — Template engine
 
