@@ -226,4 +226,14 @@ plus bleed onto dot 0; **row 0 → dot 567 (out of range) is discarded** — the
 cause of every "missing rail" seen so far, matching the AddressSmall border
 byte-for-byte (`04 01 c0`). Border pattern now draws its top edge at row 1.
 
+### 2026-07-18 — four-edge border printed; feed length still reads short
+
+- The row-1 border compensation works: all four edges printed on MediaBadge.
+- Across-the-head size is exact (48.0 mm measured = 567 dots at 300 dpi).
+- Feed length measured 62 mm twice against 63.5 mm predicted (750 lines at
+  300 lines/inch) — a consistent ~2.4% shortfall in **normal mode**
+  (`Speed 0x00`). Pending: print the same border with `--fine-print`
+  (`Speed 0x02`) and measure; that decides between a mode-dependent feed
+  pitch and a general mechanical shortfall.
+
 *(append new entries here: date, input, observation, conclusion)*
