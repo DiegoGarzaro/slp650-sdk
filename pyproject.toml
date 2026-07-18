@@ -12,6 +12,8 @@ dependencies = [
     "python-multipart>=0.0.20",
     "pillow>=11.0",
     "pydantic>=2.11",
+    "qrcode>=8.0",
+    "python-barcode>=0.15",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

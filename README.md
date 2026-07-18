@@ -26,8 +26,11 @@ Python SDK, a `slp650` CLI, and a REST print agent.
   stream and write it straight to `/dev/usb/lp0`.
 - **Capture `.slp` streams** — save the exact bytes a future embedded
   transport would send, for inspection and protocol reverse engineering.
-- **REST API** — text, image/PDF, and raw-stream printing over HTTP with
-  API-key auth, installable as a systemd service.
+- **Template engine** — data-driven labels (address, shipping with Code 128,
+  visitor badge with QR) plus app-defined custom templates; see the
+  [integration guide](docs/11_INTEGRATION_GUIDE.md).
+- **REST API** — template, text, image/PDF, and raw-stream printing over HTTP
+  with API-key auth, installable as a systemd service.
 - **Documented protocol groundwork** — known command bytes and a
   reverse-engineering workflow in [docs/03_NATIVE_PROTOCOL.md](docs/03_NATIVE_PROTOCOL.md).
 
@@ -98,6 +101,7 @@ tests/            Unit tests (no printer required)
 | [08_RASPBERRY_PI](docs/08_RASPBERRY_PI.md) | Reference platform setup |
 | [09_EMBEDDED_TRANSPORT](docs/09_EMBEDDED_TRANSPORT.md) | Hardware-agnostic transport agent contract |
 | [10_DEVELOPMENT](docs/10_DEVELOPMENT.md) | Dev setup, testing strategy, glossary, FAQ |
+| [11_INTEGRATION_GUIDE](docs/11_INTEGRATION_GUIDE.md) | Using the SDK from your app; writing custom templates |
 
 ## Development
 

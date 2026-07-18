@@ -34,9 +34,12 @@
 
 ## Milestone 3 — Template engine
 
-- [ ] Declarative templates: Address, Shipping, Inventory, Asset, Visitor Badge, Photo
-- [ ] Barcode/QR generation (rendered as images)
-- [ ] `POST /print/template` REST endpoint
+- [x] Template registry with app-defined custom templates
+      (`slp650_sdk.templates`, docs/11_INTEGRATION_GUIDE.md)
+- [x] Built-in templates: Address, Shipping, Visitor Badge
+- [ ] Additional built-ins: Inventory, Asset, Photo
+- [x] Barcode/QR generation (rendered as images; `slp650_sdk.codes`)
+- [x] `GET /templates` + `POST /print/template` REST endpoints
 
 ## Milestone 4 — Embedded transport agents
 

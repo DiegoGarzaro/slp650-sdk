@@ -17,17 +17,21 @@
 onto a canvas sized by media name, with optional rotation (0/90/180/270°),
 then saves a 1-bit PNG. It backs the REST API's `POST /print/text` endpoint.
 
-## Template engine (planned)
+## Template engine
 
-A declarative template layer on top of the renderer, with built-in layouts:
+`slp650_sdk.templates` provides data-driven layouts
+(`template name + field values -> bitmap`), exposed over
+`GET /templates` + `POST /print/template` and extensible by applications via
+`register_template()` — see [11_INTEGRATION_GUIDE.md](11_INTEGRATION_GUIDE.md).
 
-- Address
-- Shipping (with barcode)
-- Inventory
-- Asset tag (with QR)
-- Visitor badge
-- Photo
+Built-in templates:
 
-Templates should be data-driven (`template name + field values -> bitmap`) so
-the REST API can expose `POST /print/template` and embedded clients can request
-prints without doing any layout themselves. See [ROADMAP.md](../ROADMAP.md).
+| Name | Media | Required | Optional |
+|---|---|---|---|
+| `address` | AddressSmall | `address` | — |
+| `visitor-badge` | MediaBadge | `name` | `company`, `qr_data` |
+| `shipping` | Shipping | `to` | `from`, `barcode_data` |
+
+QR codes (`slp650_sdk.codes.qr_image`) and Code 128 barcodes
+(`code128_image`) are rendered host-side as 1-bit images, per the rules
+above. Planned additions: Inventory, Asset tag, Photo layouts.

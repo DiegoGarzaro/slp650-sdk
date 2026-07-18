@@ -76,9 +76,30 @@ curl -X POST $BASE/print/raw \
   -F copies=1
 ```
 
-### `POST /print/template` *(planned)*
+### `GET /templates`
 
-Data-driven template printing; see [05_RENDERING.md](05_RENDERING.md).
+Lists registered templates with their required/optional fields and default
+media — use it for discovery before calling `/print/template`.
+
+### `POST /print/template`
+
+Renders a registered template from field values and prints it natively.
+
+```bash
+curl -X POST $BASE/print/template \
+  -H "X-API-Key: $API_KEY" -H 'Content-Type: application/json' \
+  -d '{
+    "template": "visitor-badge",
+    "fields": {"name": "Diego Garzaro", "company": "ACME", "qr_data": "https://example.com/v/42"},
+    "copies": 1
+  }'
+```
+
+Body fields: `template` (required), `fields` (object), `media` (defaults to
+the template's media), `density`, `fine_print`, `copies`. Unknown template →
+404; missing required fields or bad media → 422. See
+[11_INTEGRATION_GUIDE.md](11_INTEGRATION_GUIDE.md) for integration patterns
+and custom templates.
 
 ## Error codes
 

@@ -167,6 +167,55 @@ def test_print_image_rejects_unknown_media(
     assert captured_streams == []
 
 
+def test_templates_index(client: TestClient) -> None:
+    response = client.get("/templates", headers={"X-API-Key": API_KEY})
+    assert response.status_code == 200
+    body = response.json()
+    names = [entry["name"] for entry in body]
+    assert "visitor-badge" in names
+    badge = next(entry for entry in body if entry["name"] == "visitor-badge")
+    assert badge["default_media"] == "MediaBadge"
+    assert badge["required_fields"] == ["name"]
+
+
+def test_print_template_end_to_end_native(
+    client: TestClient, captured_streams: list[bytes]
+) -> None:
+    response = client.post(
+        "/print/template",
+        headers={"X-API-Key": API_KEY},
+        json={
+            "template": "visitor-badge",
+            "fields": {"name": "Diego", "company": "ACME", "qr_data": "https://example.com"},
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["engine"] == "native"
+    assert body["template"] == "visitor-badge"
+    tokens = tokenize(captured_streams[0])
+    assert tokens[-1].name == "FormFeed"
+
+
+def test_print_template_unknown_is_404(client: TestClient) -> None:
+    response = client.post(
+        "/print/template",
+        headers={"X-API-Key": API_KEY},
+        json={"template": "bogus", "fields": {}},
+    )
+    assert response.status_code == 404
+
+
+def test_print_template_missing_fields_is_422(client: TestClient) -> None:
+    response = client.post(
+        "/print/template",
+        headers={"X-API-Key": API_KEY},
+        json={"template": "visitor-badge", "fields": {}},
+    )
+    assert response.status_code == 422
+    assert "missing required fields" in response.json()["detail"]
+
+
 def test_print_raw_rejects_empty_upload(client: TestClient) -> None:
     response = client.post(
         "/print/raw",

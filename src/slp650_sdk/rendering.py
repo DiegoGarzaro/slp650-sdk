@@ -15,19 +15,29 @@ from slp650_sdk.config import media_pixels
 FONT_CANDIDATES = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+)
+
+BOLD_FONT_CANDIDATES = (
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+    "/System/Library/Fonts/HelveticaNeue.ttc",
 )
 
 
-def load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     """Load the first available TrueType font, falling back to PIL's default.
 
     Args:
         size (int): Font size in pixels.
+        bold (bool): Prefer a bold face (falls back to regular, then to
+            PIL's built-in font).
 
     Returns:
         ImageFont.FreeTypeFont | ImageFont.ImageFont: Loaded font object.
     """
-    for candidate in FONT_CANDIDATES:
+    candidates = (*BOLD_FONT_CANDIDATES, *FONT_CANDIDATES) if bold else FONT_CANDIDATES
+    for candidate in candidates:
         if Path(candidate).is_file():
             return ImageFont.truetype(candidate, size=size)
     return ImageFont.load_default()

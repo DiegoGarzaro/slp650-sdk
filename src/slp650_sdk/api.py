@@ -29,6 +29,7 @@ from slp650_sdk.config import SLPConfig, media_pixels
 from slp650_sdk.errors import SLPError
 from slp650_sdk.native_encoder import encode_image
 from slp650_sdk.rendering import fit_image_to_media, render_text_image
+from slp650_sdk.templates import list_templates, render_template
 from slp650_sdk.transport import print_file, send_native_stream
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -68,6 +69,17 @@ class TextLabel(BaseModel):
     font_size: int = Field(default=42, ge=8, le=180)
     margin: int = Field(default=24, ge=0, le=200)
     rotate: Literal[0, 90, 180, 270] = 0
+
+
+class TemplateLabel(BaseModel):
+    """Request body for ``POST /print/template``."""
+
+    template: str = Field(min_length=1)
+    fields: dict[str, str] = Field(default_factory=dict)
+    media: str | None = None
+    density: str = "MediumQuality"
+    fine_print: bool = False
+    copies: int = Field(default=1, ge=1, le=100)
 
 
 async def execute_print(path: Path, config: SLPConfig, copies: int) -> int:
@@ -194,6 +206,44 @@ async def print_text(request: TextLabel, _: None = Depends(verify_api_key)) -> d
     return {
         "status": "printed",
         "engine": "native",
+        "native_bytes_per_copy": count,
+        "copies": request.copies,
+    }
+
+
+@app.get("/templates")
+def templates_index(_: None = Depends(verify_api_key)) -> list[dict[str, object]]:
+    """List registered templates with their fields and default media."""
+    return [
+        {
+            "name": template.name,
+            "description": template.description,
+            "default_media": template.default_media,
+            "required_fields": list(template.required_fields),
+            "optional_fields": list(template.optional_fields),
+        }
+        for template in list_templates()
+    ]
+
+
+@app.post("/print/template")
+async def print_template(
+    request: TemplateLabel, _: None = Depends(verify_api_key)
+) -> dict[str, object]:
+    """Render a registered template and print it via the native encoder."""
+    try:
+        image = render_template(request.template, request.fields, media=request.media)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    config = SLPConfig.from_env(density=request.density, fine_print=request.fine_print)
+    count = await execute_native_print(image, config, request.copies)
+    return {
+        "status": "printed",
+        "engine": "native",
+        "template": request.template,
         "native_bytes_per_copy": count,
         "copies": request.copies,
     }
