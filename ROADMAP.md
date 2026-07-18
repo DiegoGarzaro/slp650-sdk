@@ -24,9 +24,12 @@
 
 ## Milestone 2 — Pure-Python encoder
 
-- [ ] Reimplement the encoder from the documented protocol (no CUPS dependency)
-- [ ] Byte-for-byte parity with golden fixtures
-- [ ] Encoder works on any OS (macOS/Windows included)
+- [x] Reimplement the encoder from the documented protocol (no CUPS
+      dependency): `slp650_sdk.native_encoder`, `slp650 --native`
+- [x] Byte-for-byte parity with golden fixtures (all AddressSmall patterns,
+      density variants, and MediaBadge captures)
+- [x] Encoder works on any OS (macOS/Windows included)
+- [ ] Use the native encoder in the REST API text/image endpoints
 
 ## Milestone 3 — Template engine
 

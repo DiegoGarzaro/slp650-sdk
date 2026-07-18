@@ -19,6 +19,9 @@ Python SDK, a `slp650` CLI, and a REST print agent.
 
 ## Highlights
 
+- **Pure-Python native encoder** — `slp650 --native` / `encode_image()`
+  implements the reverse-engineered protocol directly, works on any OS, and
+  is verified byte-for-byte against hardware captures.
 - **Print without a CUPS queue** — encode any image/PDF to the printer-native
   stream and write it straight to `/dev/usb/lp0`.
 - **Capture `.slp` streams** — save the exact bytes a future embedded

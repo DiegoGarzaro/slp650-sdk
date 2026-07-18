@@ -40,6 +40,35 @@ Configuration can also come from `SLP650_PPD`, `SLP650_FILTER`,
 `SLP650_DEVICE`, and `SLP650_LOCK` environment variables via
 `SLPConfig.from_env()`.
 
+### Pure-Python encoder (no CUPS)
+
+`encode_image()` implements the native protocol directly and runs on any OS —
+byte-for-byte verified against hardware captures:
+
+```python
+from PIL import Image
+from slp650_sdk import SLPConfig, encode_image, send_native_stream
+
+with Image.open("label.png") as image:  # x = feed direction, height <= 576
+    data = encode_image(image, density="MediumQuality", fine_print=False)
+
+Path("label.slp").write_bytes(data)               # works on macOS/Windows
+send_native_stream(data, SLPConfig(), copies=1)   # needs the Linux device
+
+# cups_compat=False uses a clean row mapping free of the CUPS raster
+# quirks (dead top row, bottom-row double strike) — preferred for new
+# labels; the default (True) matches the CUPS pipeline byte-for-byte.
+```
+
+On the CLI, `--native` switches `slp650` to this encoder:
+
+```bash
+slp650 label.png --native --capture label.slp --dry-run   # any OS
+slp650 label.png --native --copies 2                      # on the Pi
+```
+
+The CUPS path remains useful for PDF input and as the parity reference.
+
 ## CLI
 
 The package installs a `slp650` command:

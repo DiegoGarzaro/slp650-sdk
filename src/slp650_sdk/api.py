@@ -30,7 +30,7 @@ from slp650_sdk.transport import print_file, send_native_stream
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
-app = FastAPI(title="SLP650 Print Agent", version="0.1.0")
+app = FastAPI(title="SLP650 Print Agent", version="0.2.0")
 PRINT_LOCK = threading.Lock()
 
 

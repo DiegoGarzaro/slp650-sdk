@@ -34,9 +34,11 @@ would send.
 | Layer | Module | Responsibility |
 |---|---|---|
 | Renderer | `slp650_sdk.rendering` | Text → 1-bit PNG (fonts, wrapping, rotation) |
-| Encoder | `slp650_sdk.encoder` | Document → native `.slp` stream (via CUPS filter, for now) |
+| Encoder | `slp650_sdk.native_encoder` | Image → native `.slp` stream (pure Python, any OS) |
+| Encoder | `slp650_sdk.encoder` | Document → native `.slp` stream via the CUPS filter (Linux; handles PDFs) |
 | Transport | `slp650_sdk.transport` | `.slp` stream → `/dev/usb/lp0`, with locking |
-| Shared | `slp650_sdk.config` | Paths, media geometry, print options |
+| Protocol | `slp650_sdk.protocol` | Parse/inspect/diff `.slp` streams (`slp650-dump`) |
+| Shared | `slp650_sdk.config`, `slp650_sdk.patterns` | Media geometry, print options, test patterns |
 | Interfaces | `slp650_sdk.cli`, `slp650_sdk.api` | Command line and REST front ends |
 
 ## Rules for contributors (human or AI)

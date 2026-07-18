@@ -3,12 +3,13 @@
 The SLP650 does **not** speak PostScript, PCL, or ESC/POS. It receives a
 compact command stream on USB bulk OUT endpoint `0x01`.
 
-**Status: decoded.** The protocol was reverse engineered on 2026-07-16 from
-hardware captures cross-checked against the GPL driver source
+**Status: decoded and reimplemented.** The protocol was reverse engineered on
+2026-07-16 from hardware captures cross-checked against the GPL driver source
 (<https://github.com/fawkesley/smart-label-printer-slp-linux-driver>, files
 `SeikoSLPCommands.h`, `RasterToSIISLP.cxx`, `SIISLPProcessBitmap.cxx`).
-`slp650_sdk.protocol` implements a parser/decoder for it; see the discovery
-log at the bottom for evidence.
+`slp650_sdk.protocol` parses/decodes streams, and `slp650_sdk.native_encoder`
+is a pure-Python encoder verified byte-for-byte against the captures; see the
+discovery log at the bottom for evidence.
 
 ## Command set
 

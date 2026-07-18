@@ -1,6 +1,6 @@
 [project]
 name = "slp650-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Portable SDK for the Seiko SLP650/SLP650SE label printer: renderer, native-protocol encoder, and transports"
 readme = "README.md"
 license = { file = "LICENSE" }

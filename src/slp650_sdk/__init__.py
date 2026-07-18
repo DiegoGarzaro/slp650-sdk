@@ -12,9 +12,10 @@ from __future__ import annotations
 from slp650_sdk.config import DPI, MEDIA_POINTS, PRINTHEAD_DOTS, SLPConfig, media_pixels
 from slp650_sdk.encoder import build_native_stream
 from slp650_sdk.errors import SLPError
+from slp650_sdk.native_encoder import encode_image
 from slp650_sdk.transport import print_file, send_native_stream
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "DPI",
@@ -24,6 +25,7 @@ __all__ = [
     "SLPError",
     "__version__",
     "build_native_stream",
+    "encode_image",
     "media_pixels",
     "print_file",
     "send_native_stream",
